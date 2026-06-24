@@ -51,6 +51,16 @@
   table.sens th{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-mute);text-align:right;padding:4px 6px;border-bottom:1px solid var(--rule);}
   table.sens td{text-align:right;padding:4px 6px;border-bottom:1px dotted var(--rule);color:var(--ink-soft);}
   table.sens tr.basecase td{background:#EAF1F8;color:var(--ink);}
+  table.xtab{width:100%;border-collapse:collapse;font-family:'IBM Plex Mono',monospace;font-size:11px;margin-top:6px;}
+  table.xtab th,table.xtab td{padding:5px 6px;text-align:right;border-bottom:1px dotted var(--rule);}
+  table.xtab thead th{font-size:9.5px;letter-spacing:.04em;color:var(--ink-mute);border-bottom:1px solid var(--rule);font-weight:600;}
+  table.xtab thead th.corner{text-align:left;text-transform:uppercase;letter-spacing:.1em;}
+  table.xtab tbody th{text-align:left;color:var(--ink-soft);font-weight:500;}
+  table.xtab thead th.basecol,table.xtab tbody th.baserow{color:var(--gold-deep);font-weight:700;}
+  table.xtab td{color:var(--ink-soft);}
+  table.xtab td.basecol{background:rgba(31,78,121,.04);}
+  table.xtab tr.baserow td{background:rgba(31,78,121,.04);}
+  table.xtab td.basecase{background:#EAF1F8;color:var(--ink);font-weight:700;}
   .adv-h{cursor:pointer;user-select:none;} .adv-h::before{content:"▸ ";color:var(--gold);}
   .adv-h.open::before{content:"▾ ";}
   .hide{display:none!important;}
@@ -163,12 +173,9 @@
         <div class="res sub"><span class="k">Preço pago</span><span class="v" id="cPreco">—</span></div>
       </div>
       <div class="panel">
-        <h2 class="sec">Sensibilidade — TIR × preço</h2>
-        <table class="sens" id="tblSensPreco"><thead><tr><th>Preço (R$)</th><th>Deságio</th><th>TIR</th></tr></thead><tbody></tbody></table>
-      </div>
-      <div class="panel">
-        <h2 class="sec">Sensibilidade — TIR × prazo</h2>
-        <table class="sens" id="tblSensPrazo"><thead><tr><th>Prazo (m)</th><th>Pagamento</th><th>TIR</th></tr></thead><tbody></tbody></table>
+        <h2 class="sec">Sensibilidade — TIR (prazo × preço)</h2>
+        <table class="xtab" id="tblSensX"><thead></thead><tbody></tbody></table>
+        <div style="font-size:9px;color:var(--ink-mute);margin-top:6px;">linhas = prazo · colunas = preço pago · célula = TIR a.a.</div>
       </div>
       <div class="panel hide" id="panelSensEo">
         <h2 class="sec">Sensibilidade — TIR × earn-out</h2>
@@ -478,7 +485,7 @@ function recalc(){
   if(!(inp.face>0) || !(somaLevas>0) || !(efPrazo>0)){
     ['rTir','rPreco','rDes','rMoic','rPrazo','rData','cFace','cJuros','cFaceC','cFator','cEo','cRecLiq','cPreco'].forEach(id=>$(id).textContent='—');
     if(IPCAMODE==='curva') $('ipcaVal').value='0';
-    ['tblSensPreco','tblSensPrazo','tblSensEo'].forEach(id=>$(id).querySelector('tbody').innerHTML='');
+    $('tblSensX').querySelector('thead').innerHTML=''; ['tblSensX','tblSensEo'].forEach(id=>$(id).querySelector('tbody').innerHTML='');
     return;
   }
   const o=PrecatEngine.price(inp, SNAP, FER);
@@ -502,28 +509,27 @@ function recalc(){
   $('cPreco').textContent=fmtBRL(o.preco);
   // ---- sensibilidades ----
   const f2=(x)=>(x*100).toFixed(2)+'%';
+  const fmtM=(v)=> (v/1e6).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'M';
   let tb;
-  // TIR × preço
-  tb=$('tblSensPreco').querySelector('tbody'); tb.innerHTML='';
-  [0.8,0.9,1.0,1.1,1.2].forEach(f=>{
-    const o2=PrecatEngine.price(Object.assign({},inp,{sensPricef:f}),SNAP,FER);
-    const preco=o.preco*f, des=inp.face? 1-preco/inp.face:0;
-    const tr=document.createElement('tr'); if(Math.abs(f-1)<1e-9) tr.className='basecase';
-    tr.innerHTML=`<td>${fmtBRL(preco)}</td><td>${(des*100).toFixed(1)}%</td><td>${f2(o2.tir)}</td>`;
-    tb.appendChild(tr);
-  });
-  // TIR × prazo (Δ meses; sob acordo varia o prazo do acordo)
+  // matriz cruzada TIR — linhas = prazo, colunas = preço pago
+  const priceFactors=[0.8,0.9,1.0,1.1,1.2];
   const basePrazo = inp.temAcordo ? inp.acordoPrazo : inp.prazoMeses;
-  const stepP = Math.max(1, Math.floor(basePrazo/4));   // passo adaptativo: base sempre no centro e prazos positivos
-  tb=$('tblSensPrazo').querySelector('tbody'); tb.innerHTML='';
-  [-3,-2,-1,0,1,2,3].forEach(k=>{
+  const stepP = Math.max(1, Math.floor(basePrazo/4));   // passo adaptativo: prazo sempre centrado e positivo
+  let hrow='<tr><th class="corner">prazo \\ preço</th>';
+  priceFactors.forEach(f=>{ hrow+=`<th${Math.abs(f-1)<1e-9?' class="basecol"':''}>${fmtM(o.preco*f)}</th>`; });
+  $('tblSensX').querySelector('thead').innerHTML=hrow+'</tr>';
+  const xb=$('tblSensX').querySelector('tbody'); xb.innerHTML='';
+  [-2,-1,0,1,2].forEach(k=>{
     const d=k*stepP, p=basePrazo+d;
-    const inp2 = inp.temAcordo ? Object.assign({},inp,{acordoPrazo:p})
-                               : Object.assign({},inp,{sensPrazoDelta:d});
-    const o2=PrecatEngine.price(inp2,SNAP,FER);
-    const tr=document.createElement('tr'); if(k===0) tr.className='basecase';
-    tr.innerHTML=`<td>${p}</td><td>${o2.dataPagamento}</td><td>${f2(o2.tir)}</td>`;
-    tb.appendChild(tr);
+    let row=`<tr${k===0?' class="baserow"':''}><th${k===0?' class="baserow"':''}>${p}m</th>`;
+    priceFactors.forEach(f=>{
+      const inp2=Object.assign({},inp,{sensPricef:f});
+      if(inp.temAcordo) inp2.acordoPrazo=p; else inp2.sensPrazoDelta=d;
+      const o2=PrecatEngine.price(inp2,SNAP,FER);
+      const cls = (k===0 && Math.abs(f-1)<1e-9) ? 'basecase' : (Math.abs(f-1)<1e-9 ? 'basecol' : '');
+      row+=`<td${cls?` class="${cls}"`:''}>${(o2.tir*100).toFixed(1)}%</td>`;
+    });
+    xb.innerHTML+=row+'</tr>';
   });
   // TIR × earn-out (% do earn-out ±10/±20pp em torno do base) — só quando há earn-out
   if(inp.temEarnout){
