@@ -330,10 +330,11 @@ function price(inp, snap, ferSet){
     precBoP[m] = (m === 1) ? face : precEoP[m - 1];
     let jur = 0;
     if (sBullet >= serial(date[m])){
+      // juros simples actual/365 sobre o principal (corrige o sub-acúmulo do template, que usava /dc)
       if (serial(date[m]) <= sVira)
-        jur = (idxRate(inp.corrPreIdx || "Pré", m, "corr") + inp.corrPre) / dc[m] * face;  // pré-precatório (índice + taxa)
+        jur = (idxRate(inp.corrPreIdx || "Pré", m, "corr") + inp.corrPre) * dc[m] / 365 * face;  // pré-precatório (índice + taxa)
       else
-        jur = (idxRate(inp.corrIdx, m, "corr") + inp.corrSpread) / dc[m] * face;            // pós-precatório (índice + spread)
+        jur = (idxRate(inp.corrIdx, m, "corr") + inp.corrSpread) * dc[m] / 365 * face;            // pós-precatório (índice + spread)
     }
     precJur[m] = jur; accJur += jur;
     const isBullet = serial(date[m]) === sBullet;
