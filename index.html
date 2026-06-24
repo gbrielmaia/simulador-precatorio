@@ -105,7 +105,7 @@
           <span class="suffix" id="connPre">+</span><input type="number" id="corrPre" value="8" step="0.1" oninput="recalc()"><span class="suffix">% a.a.</span></span></div>
 
         <div class="subhdr">Fase precatório</div>
-        <div class="field"><label>Prazo até pagamento<span class="help" title="Meses entre virar precatório e o pagamento (bullet).">i</span></label><span><input type="number" id="prazo" value="6" oninput="recalc()"><span class="suffix">meses</span></span></div>
+        <div class="field"><label>Prazo até pagamento<span class="help" title="Meses entre virar precatório e o pagamento (bullet).">i</span></label><span><input type="number" id="prazo" value="24" oninput="recalc()"><span class="suffix">meses</span></span></div>
         <div class="field"><label>Correção precatório<span class="help" title="Índice + spread que corrigem o precatório DEPOIS de inscrito. Pré = taxa fixa; CDI = curva nominal + spread; IPCA = inflação (campo IPCA abaixo) + spread.">i</span></label><span>
           <select id="corrIdx" onchange="recalc()"><option>Pré</option><option selected>IPCA</option><option>CDI</option></select>
           <span class="suffix" id="connCorr">+</span><input type="number" id="corrSpread" value="2" step="0.1" oninput="recalc()"><span class="suffix">% a.a.</span></span></div>
@@ -134,7 +134,7 @@
           <div id="boxEo">
             <div class="field"><label>Earn-out — piso<span class="help" title="Índice + spread da subordinada (hurdle). Pré = taxa fixa; CDI = curva nominal + spread; IPCA = inflação (campo IPCA acima) + spread. O earn-out só paga o excedente acima desse piso.">i</span></label><span>
               <select id="eoIdx" onchange="recalc()"><option>Pré</option><option>IPCA</option><option selected>CDI</option></select>
-              <span class="suffix" id="connEo">+</span><input type="number" id="eoSpread" value="15" step="0.5" oninput="recalc()"><span class="suffix">% a.a.</span></span></div>
+              <span class="suffix" id="connEo">+</span><input type="number" id="eoSpread" value="8" step="0.5" oninput="recalc()"><span class="suffix">% a.a.</span></span></div>
             <div style="font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-mute);margin:8px 0 2px;">Janelas (de–até meses → %)</div>
             <table class="levas" id="tblJan"><tbody></tbody></table>
           </div>
@@ -506,13 +506,14 @@ function recalc(){
   });
   // TIR × prazo (Δ meses; sob acordo varia o prazo do acordo)
   const basePrazo = inp.temAcordo ? inp.acordoPrazo : inp.prazoMeses;
+  const stepP = Math.max(1, Math.floor(basePrazo/4));   // passo adaptativo: base sempre no centro e prazos positivos
   tb=$('tblSensPrazo').querySelector('tbody'); tb.innerHTML='';
-  [-6,0,6,12,18,24].forEach(d=>{
-    const p=basePrazo+d;
+  [-3,-2,-1,0,1,2,3].forEach(k=>{
+    const d=k*stepP, p=basePrazo+d;
     const inp2 = inp.temAcordo ? Object.assign({},inp,{acordoPrazo:p})
                                : Object.assign({},inp,{sensPrazoDelta:d});
     const o2=PrecatEngine.price(inp2,SNAP,FER);
-    const tr=document.createElement('tr'); if(d===0) tr.className='basecase';
+    const tr=document.createElement('tr'); if(k===0) tr.className='basecase';
     tr.innerHTML=`<td>${p}</td><td>${o2.dataPagamento}</td><td>${f2(o2.tir)}</td>`;
     tb.appendChild(tr);
   });
