@@ -474,6 +474,15 @@ function readInputs(){
     eo2Valor:0, eo2Mes:18, sensPricef:1, sensPrazoDelta:0,
     ipcaOverride: (IPCAMODE==='manual') ? num('ipcaVal')/100 : null };
 }
+// IPCA implícito da ETTJ depende SÓ da curva + horizonte (vira/bullet), não de preço/face.
+// Mostra assim que houver prazo definido; em branco se ainda não há horizonte (nunca 0% enganoso).
+function updateIpcaImpl(inp){
+  if(IPCAMODE!=='curva') return;                         // modo manual: campo é input do usuário
+  const efPrazo = inp.temAcordo ? inp.acordoPrazo : inp.prazoMeses;
+  if(!(efPrazo>0)){ $('ipcaVal').value=''; return; }
+  const probe = PrecatEngine.price({...inp, face:1, modo:'avista', levas:[{date:SNAP.data_base, valor:1}]}, SNAP, FER);
+  $('ipcaVal').value=(probe.ipcaImplicito*100).toFixed(2);
+}
 function recalc(){
   const inp=readInputs();
   // conectores "+" (somem quando índice = Pré) — sempre atualizam
@@ -485,7 +494,7 @@ function recalc(){
   const efPrazo = inp.temAcordo ? inp.acordoPrazo : inp.prazoMeses;
   if(!(inp.face>0) || !(somaLevas>0) || !(efPrazo>0)){
     ['rTir','rPreco','rDes','rMoic','rPrazo','rData','cFace','cJuros','cFaceC','cFator','cEo','cRecLiq','cPreco'].forEach(id=>$(id).textContent='—');
-    if(IPCAMODE==='curva') $('ipcaVal').value='0';
+    updateIpcaImpl(inp);   // IPCA implícito ainda aparece (depende só da curva+prazo), não força 0
     $('tblSensX').querySelector('thead').innerHTML=''; ['tblSensX','tblSensEo'].forEach(id=>$(id).querySelector('tbody').innerHTML='');
     return;
   }
