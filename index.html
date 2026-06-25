@@ -107,6 +107,8 @@
       <div class="panel">
         <h2 class="sec">Precatório</h2>
         <div class="field"><label>Valor de face<span class="help" title="Valor nominal do crédito na data-base de hoje, antes de qualquer correção.">i</span></label><span><input type="text" inputmode="decimal" id="face" value="0,00" oninput="recalc()" onblur="maskMoney(this)"><span class="suffix">R$</span></span></div>
+        <div class="field"><label>Valor a pagar<span class="help" title="Preço total da aquisição. À vista = pago de uma vez na data de início; parcelado = dividido em N parcelas iguais mensais a partir da data de início.">i</span></label><span><input type="text" inputmode="decimal" id="valorPagar" value="0,00" oninput="recalc()" onblur="maskMoney(this)"><span class="suffix">R$</span></span></div>
+        <div class="field"><label>Data de início<span class="help" title="Data em que a operação começa (correção e desembolso). Default = data-base da ETTJ. O 1º mês é pro-rata a partir dela. A curva é sempre lida pela data-base da ETTJ.">i</span></label><span><input type="date" id="dataInicio" oninput="recalc()"></span></div>
 
         <div class="subhdr" id="hdrPreFase">Fase pré-precatório</div>
         <div class="field" id="rowVira"><label>Vira precatório em<span class="help" title="Meses até o crédito ser efetivamente inscrito como precatório. Até lá corrige pela 'Correção pré-precatório'.">i</span></label><span><input type="number" id="viraMeses" value="0" oninput="recalc()"><span class="suffix">meses</span></span></div>
@@ -125,12 +127,8 @@
 
       <div class="panel">
         <h2 class="sec">Aquisição</h2>
-        <div class="field" id="rowPreco"><label>Preço (à vista)</label><span><input type="text" inputmode="decimal" id="preco" value="0,00" oninput="recalc()" onblur="maskMoney(this)"><span class="suffix">R$</span></span></div>
-        <div class="field"><label>TIR-alvo<span class="help" title="Resolve o preço (à vista) ou escala as levas (parcelado) para que a TIR fique igual à meta. Útil para definir o quanto pagar.">i</span></label><span class="gsbox"><input type="number" id="tirAlvo" value="0" step="0.5"><span class="suffix">%</span><button class="btn noprint" onclick="goalSeek()">resolver preço</button></span></div>
-        <div id="boxLevas" class="hide">
-          <table class="levas" id="tblLevas"><thead><tr><th style="text-align:left;font-size:9px;color:var(--ink-mute)">Data</th><th style="font-size:9px;color:var(--ink-mute)">Valor (R$)</th><th></th></tr></thead><tbody></tbody></table>
-          <button class="btn" onclick="addLeva()">+ leva</button>
-        </div>
+        <div class="field hide" id="rowParcelas"><label>Nº de parcelas<span class="help" title="Quantas parcelas iguais mensais. O 'Valor a pagar' é dividido por este número, uma por mês a partir da data de início.">i</span></label><span><input type="number" id="nParcelas" value="1" min="1" oninput="recalc()"></span></div>
+        <div class="field"><label>TIR-alvo<span class="help" title="Resolve o 'Valor a pagar' para que a TIR fique igual à meta. Útil para definir o quanto pagar.">i</span></label><span class="gsbox"><input type="number" id="tirAlvo" value="0" step="0.5"><span class="suffix">%</span><button class="btn noprint" onclick="goalSeek()">resolver preço</button></span></div>
       </div>
 
       <div class="panel">
@@ -215,6 +213,20 @@ function ymd(y, m, d){ return new Date(Date.UTC(y, m, d)); }
 function parseDate(s){ const [y,m,d] = s.split("-").map(Number); return ymd(y, m-1, d); }
 function serial(dt){ return Math.round((Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate()) - EPOCH) / MS); }
 function eomonth(dt, n){ return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + n + 1, 0)); }
+function addMonths(dt, n){
+  const target = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + n, 1));
+  const last = eomonth(target, 0).getUTCDate();
+  return new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), Math.min(dt.getUTCDate(), last)));
+}
+const isoDate = (dt) => dt.toISOString().slice(0, 10);
+function buildLevas(modo, dataInicio, valor, nParcelas){
+  const d0 = parseDate(dataInicio);
+  if (modo === "parcelado" && nParcelas > 0){
+    const v = valor / nParcelas;
+    return Array.from({ length: nParcelas }, (_, i) => ({ date: isoDate(addMonths(d0, i)), valor: v }));
+  }
+  return [{ date: dataInicio, valor: valor }];
+}
 function days(d0, d1){ return Math.round((serial(d1) - serial(d0))); }
 function businessDays(d0, d1, ferSet){ // NETWORKDAYS.INTL(d0,d1,1,feriados): inclusivo nos 2 extremos
   let s0 = serial(d0), s1 = serial(d1), n = 0;
@@ -262,7 +274,8 @@ function xirr(cfs, dates){
 // snap: snapshot_curva.json ; ferSet: Set de seriais (feriados)
 const NMONTHS = 163;
 function price(inp, snap, ferSet){
-  const base = parseDate(snap.data_base);
+  const curveBase = parseDate(snap.data_base);                         // curva: tenor da Svensson
+  const base = inp.dataInicio ? parseDate(inp.dataInicio) : curveBase; // opBase: data de início rege a timeline
   const pre = snap.pre, ipca = snap.ipca;
   const pricef = inp.sensPricef == null ? 1 : inp.sensPricef;
   const prazoDelta = inp.sensPrazoDelta || 0;
@@ -283,12 +296,12 @@ function price(inp, snap, ferSet){
   let ipcaSum = 0, ipcaN = 0;   // p/ IPCA médio implícito (breakeven) no período de correção
   for (let m = 1; m <= NMONTHS; m++){
     const me = eomonth(base, m - 1);          // fim do mês m
-    const pe = eomonth(base, m - 2);          // fim do mês anterior (m-1); m=1 -> EOMONTH(base,-1)
+    const pe = (m === 1) ? base : eomonth(base, m - 2); // 1º mês: pro-rata SEMPRE a partir da data de início (opBase), incl. quando = data-base
     date[m] = me;
     dc[m] = days(pe, me);
     du[m] = businessDays(pe, me, ferSet);
     cumDu[m] = cumDu[m - 1] + du[m];
-    const t = (serial(me) - serial(base)) / 360;
+    const t = (serial(me) - serial(curveBase)) / 360; // tenor SEMPRE da data-base da ETTJ
     Pre[m] = svensson(t, pre);
     JR[m] = svensson(t, ipca);
     const bk = (1 + Pre[m]) / (1 + JR[m]) - 1;                       // IPCA breakeven implícito (curva)
@@ -384,7 +397,7 @@ function price(inp, snap, ferSet){
            fluxo: cfs.map((c, i) => ({ date: dts[i].toISOString().slice(0, 10), cf: c })) };
 }
 
-const API = { svensson, serial, eomonth, days, businessDays, xirr, price, parseDate };
+const API = { svensson, serial, eomonth, days, businessDays, xirr, price, parseDate, buildLevas };
 if (typeof module !== "undefined") module.exports = API;
 if (typeof window !== "undefined") window.PrecatEngine = API;
 
@@ -438,16 +451,6 @@ function renderJanelas(){
       <td><input type=number value=${w[2]} oninput="JAN_DEF[${i}][2]=+this.value;recalc()"><span class=suffix>%</span></td>`;
     tb.appendChild(tr); });
 }
-let LEVAS = [[SNAP.data_base,0]];
-function renderLevas(){
-  const tb=$('tblLevas').querySelector('tbody'); tb.innerHTML='';
-  LEVAS.forEach((l,i)=>{ const tr=document.createElement('tr');
-    tr.innerHTML=`<td><input type=date value="${l[0]}" onchange="LEVAS[${i}][0]=this.value;recalc()"></td>
-      <td><input type=text inputmode=decimal value="${fmtBRL(l[1])}" oninput="maskMoney(this);LEVAS[${i}][1]=parseMoney(this.value);recalc()"></td>
-      <td><button class=btn onclick="LEVAS.splice(${i},1);renderLevas();recalc()">×</button></td>`;
-    tb.appendChild(tr); });
-}
-function addLeva(){ LEVAS.push([SNAP.data_base,0]); renderLevas(); recalc(); }
 function setModo(m){ MODO=m; $('mAvista').classList.toggle('on',m==='avista'); $('mParc').classList.toggle('on',m==='parcelado'); sync(); }
 function toggleAdv(){ $('advBody').classList.toggle('hide'); $('advH').classList.toggle('open'); }
 
@@ -456,16 +459,18 @@ function sync(){ // mostra/esconde conforme switches
   $('hdrPreFase').classList.toggle('hide', ehP);
   $('rowVira').classList.toggle('hide', ehP);
   $('rowPre').classList.toggle('hide', ehP);
-  $('rowPreco').classList.toggle('hide', MODO!=='avista');
-  $('boxLevas').classList.toggle('hide', MODO!=='parcelado');
+  $('rowParcelas').classList.toggle('hide', MODO!=='parcelado');
   $('boxEo').classList.toggle('hide', !eo);
   $('boxAcordo').classList.toggle('hide', !ac);
   $('panelSensEo').classList.toggle('hide', !eo);
   recalc();
 }
 function readInputs(){
-  const levas = (MODO==='avista') ? [{date:SNAP.data_base, valor:money('preco')}]
-                                  : LEVAS.map(l=>({date:l[0], valor:l[1]}));
+  const di = $('dataInicio').value || SNAP.data_base;
+  const V = money('valorPagar');
+  const levas = (MODO==='avista')
+    ? PrecatEngine.buildLevas('avista', di, V, 1)
+    : PrecatEngine.buildLevas('parcelado', di, V, Math.max(1, num('nParcelas')));
   return { ehPrecatorio:$('ehPrec').checked, modo:MODO, temEarnout:$('temEo').checked, temAcordo:$('temAc').checked,
     face:money('face'), viraMeses:num('viraMeses'), prazoMeses:num('prazo'),
     corrIdx:"IPCA", corrSpread:num('corrSpread')/100,
@@ -473,7 +478,7 @@ function readInputs(){
     levas, acordoFator:num('acFator')/100, acordoPrazo:num('acPrazo'),
     eoIdx:$('eoIdx').value, eoSpread:num('eoSpread')/100,
     eoJanelas:JAN_DEF.map(w=>({de:w[0],ate:w[1],pct:w[2]/100})),
-    eo2Valor:0, eo2Mes:18, sensPricef:1, sensPrazoDelta:0,
+    eo2Valor:0, eo2Mes:18, sensPricef:1, sensPrazoDelta:0, dataInicio:di,
     ipcaOverride: (IPCAMODE==='manual') ? num('ipcaVal')/100 : null };
 }
 // IPCA implícito da ETTJ depende SÓ da curva + horizonte (vira/bullet), não de preço/face.
@@ -578,8 +583,7 @@ function goalSeek(){
   const efPrazo = inp.temAcordo ? inp.acordoPrazo : inp.prazoMeses;
   if(!(inp.face>0) || !(efPrazo>0) || !(target>0)){ toast('Preencha face, prazo e TIR-alvo (>0) antes de resolver o preço'); return; }
   const f=solvePricef(inp, target);
-  if(MODO==='avista'){ $('preco').value=fmtBRL(money('preco')*f); }
-  else { LEVAS=LEVAS.map(l=>[l[0], l[1]*f]); renderLevas(); }
+  $('valorPagar').value=fmtBRL(money('valorPagar')*f);  // escala o valor a pagar (à vista ou parcelado V÷N)
   recalc();
   toast('Preço resolvido para TIR-alvo de '+(target*100).toFixed(2)+'%');
 }
@@ -589,18 +593,17 @@ function buildState(){
   return { ehP:$('ehPrec').checked, eo:$('temEo').checked, ac:$('temAc').checked, modo:MODO,
     face:$('face').value, vira:num('viraMeses'), prazo:num('prazo'),
     cs:num('corrSpread'), cpi:$('corrPreIdx').value, cp:num('corrPre'),
-    im:IPCAMODE, iv:num('ipcaVal'), preco:$('preco').value, ta:num('tirAlvo'),
+    im:IPCAMODE, iv:num('ipcaVal'), vp:$('valorPagar').value, di:$('dataInicio').value, np:num('nParcelas'), ta:num('tirAlvo'),
     af:num('acFator'), ap:num('acPrazo'), ei:$('eoIdx').value, es:num('eoSpread'),
-    jan:JAN_DEF, levas:LEVAS };
+    jan:JAN_DEF };
 }
 function applyState(s){ try{
   $('ehPrec').checked=!!s.ehP; $('temEo').checked=!!s.eo; $('temAc').checked=!!s.ac;
   $('face').value=s.face; $('viraMeses').value=s.vira; $('prazo').value=s.prazo;
   $('corrSpread').value=s.cs; if(s.cpi)$('corrPreIdx').value=s.cpi; $('corrPre').value=s.cp;
-  $('ipcaVal').value=s.iv; $('preco').value=s.preco; $('tirAlvo').value=s.ta;
+  $('ipcaVal').value=s.iv; $('valorPagar').value=s.vp||s.preco||'0,00'; if(s.di)$('dataInicio').value=s.di; if(s.np)$('nParcelas').value=s.np; $('tirAlvo').value=s.ta;
   $('acFator').value=s.af; $('acPrazo').value=s.ap; $('eoIdx').value=s.ei; $('eoSpread').value=s.es;
   if(Array.isArray(s.jan)) JAN_DEF.splice(0,JAN_DEF.length,...s.jan);
-  if(Array.isArray(s.levas)) LEVAS=s.levas;
   MODO=s.modo||'avista'; IPCAMODE=s.im||'curva';
 }catch(e){} }
 function encodeState(){ return btoa(unescape(encodeURIComponent(JSON.stringify(buildState())))); }
@@ -620,7 +623,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   $('mAvista').classList.toggle('on',MODO==='avista'); $('mParc').classList.toggle('on',MODO==='parcelado');
   $('ipcaCurva').classList.toggle('on',IPCAMODE==='curva'); $('ipcaMan').classList.toggle('on',IPCAMODE==='manual');
   $('ipcaVal').disabled=(IPCAMODE==='curva');
-  renderLevas(); renderJanelas(); sync();
+  if(!$('dataInicio').value) $('dataInicio').value=SNAP.data_base;   // default = data-base da ETTJ
+  renderJanelas(); sync();
 });
 </script>
 </body>
