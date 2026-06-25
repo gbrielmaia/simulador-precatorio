@@ -293,7 +293,8 @@ function price(inp, snap, ferSet){
     JR[m] = svensson(t, ipca);
     const bk = (1 + Pre[m]) / (1 + JR[m]) - 1;                       // IPCA breakeven implícito (curva)
     IPCA[m] = (inp.ipcaOverride != null) ? inp.ipcaOverride : bk;    // override manual substitui o implícito
-    if (serial(me) > sVira && serial(me) <= sBullet) { ipcaSum += bk; ipcaN++; }
+    // janela de correção pós-precatório: se já é precatório, conta desde o mês 1 (não só após vira_data)
+    if ((inp.ehPrecatorio || serial(me) > sVira) && serial(me) <= sBullet) { ipcaSum += bk; ipcaN++; }
     FRA[m] = (m === 1) ? Pre[m]
       : Math.pow(Math.pow(1 + Pre[m], cumDu[m] / 252) / Math.pow(1 + Pre[m - 1], cumDu[m - 1] / 252), 252 / du[m]) - 1;
   }
@@ -331,7 +332,8 @@ function price(inp, snap, ferSet){
     let jur = 0;
     if (sBullet >= serial(date[m])){
       // juros simples actual/365 sobre o principal (corrige o sub-acúmulo do template, que usava /dc)
-      if (serial(date[m]) <= sVira)
+      // se JÁ é precatório, corrige por IPCA+spread desde o mês 1 (sem fase pré); senão pré até vira_data
+      if (!inp.ehPrecatorio && serial(date[m]) <= sVira)
         jur = (idxRate(inp.corrPreIdx || "Pré", m, "corr") + inp.corrPre) * dc[m] / 365 * face;  // pré-precatório (índice + taxa)
       else
         jur = (idxRate(inp.corrIdx, m, "corr") + inp.corrSpread) * dc[m] / 365 * face;            // pós-precatório (índice + spread)
