@@ -488,8 +488,8 @@ function updateIpcaImpl(inp){
   if(IPCAMODE!=='curva') return;                         // modo manual: campo é input do usuário
   const efPrazo = inp.temAcordo ? inp.acordoPrazo : inp.prazoMeses;
   const probeInp = (efPrazo>0)
-    ? {...inp, face:1, modo:'avista', levas:[{date:SNAP.data_base, valor:1}]}
-    : {...inp, face:1, modo:'avista', levas:[{date:SNAP.data_base, valor:1}],
+    ? {...inp, face:1, modo:'avista', levas:[{date:(inp.dataInicio||SNAP.data_base), valor:1}]}
+    : {...inp, face:1, modo:'avista', levas:[{date:(inp.dataInicio||SNAP.data_base), valor:1}],
        ehPrecatorio:true, temAcordo:false, viraMeses:0, prazoMeses:60};  // referência 5 anos
   const probe = PrecatEngine.price(probeInp, SNAP, FER);
   $('ipcaVal').value=(probe.ipcaImplicito*100).toFixed(2);
