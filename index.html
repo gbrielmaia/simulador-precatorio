@@ -110,7 +110,8 @@
 
       <div class="panel">
         <h2 class="sec">Precatório</h2>
-        <div class="field"><label>Valor de face<span class="help" title="Valor nominal do crédito na data-base de hoje, antes de qualquer correção.">i</span></label><span><input type="text" inputmode="decimal" id="face" value="0,00" oninput="recalc()" onblur="maskMoney(this)"><span class="suffix">R$</span></span></div>
+        <div class="field"><label>Valor de face<span class="help" title="Valor do precatório HOJE (na data-base) — já inclui a causa + os juros/correção acruados até hoje. É o que é amortizado no pagamento.">i</span></label><span><input type="text" inputmode="decimal" id="face" value="0,00" oninput="recalc()" onblur="maskMoney(this)"><span class="suffix">R$</span></span></div>
+        <div class="field"><label>Valor da causa<span class="help" title="Principal (valor original da causa), sem os juros já acruados. O juros simples forward (IPCA+spread) incide sobre ESTE valor, não sobre o face (que já tem juros). Deixe 0 para usar o valor de face (precatório recém-inscrito).">i</span></label><span><input type="text" inputmode="decimal" id="valorCausa" value="0,00" oninput="recalc()" onblur="maskMoney(this)"><span class="suffix">R$</span></span></div>
         <div class="field"><label>Valor a pagar<span class="help" title="Preço total da aquisição. À vista = pago de uma vez na data de início; parcelado = dividido em N parcelas iguais mensais a partir da data de início.">i</span></label><span><input type="text" inputmode="decimal" id="valorPagar" value="0,00" oninput="recalc()" onblur="maskMoney(this)"><span class="suffix">R$</span></span></div>
         <div class="field"><label>Data de início<span class="help" title="Data em que a operação começa (correção e desembolso). Default = data-base da ETTJ. O 1º mês é pro-rata a partir dela. A curva é sempre lida pela data-base da ETTJ.">i</span></label><span><input type="date" id="dataInicio" oninput="recalc()"></span></div>
 
@@ -294,6 +295,9 @@ function price(inp, snap, ferSet){
   const sBullet = serial(bullet), sVira = serial(viraData);
 
   const face = inp.face;
+  // valor da causa (principal) = base do juros simples. Default = face (precatório recém-inscrito).
+  // O juros forward (IPCA+spread) incide sobre a CAUSA, não sobre o face (que já embute juros acruados).
+  const causa = (inp.valorCausa > 0) ? inp.valorCausa : face;
   const levas = inp.levas || [];
   const precoPago = levas.reduce((s, l) => s + (l.valor || 0), 0) * pricef; // C34
 
@@ -355,10 +359,10 @@ function price(inp, snap, ferSet){
       // juros simples actual/365 sobre o principal (corrige o sub-acúmulo do template, que usava /dc)
       // se JÁ é precatório, corrige por IPCA+spread desde o mês 1 (sem fase pré); senão pré até vira_data
       if (!inp.ehPrecatorio && serial(date[m]) <= sVira)
-        jur = (idxRate(inp.corrPreIdx || "Pré", m, "corr") + inp.corrPre) * dc[m] / 365 * face;  // pré-precatório (índice + taxa)
+        jur = (idxRate(inp.corrPreIdx || "Pré", m, "corr") + inp.corrPre) * dc[m] / 365 * causa;  // pré-precatório (índice + taxa) sobre a causa
       else {
-        jur = (idxRate(inp.corrIdx, m, "corr") + inp.corrSpread) * dc[m] / 365 * face;            // pós-precatório (índice + spread)
-        cIpcaFrac += idxRate(inp.corrIdx, m, "corr") * dc[m] / 365;  // só a parte de IPCA (sem spread)
+        jur = (idxRate(inp.corrIdx, m, "corr") + inp.corrSpread) * dc[m] / 365 * causa;            // pós-precatório (índice + spread) sobre a causa
+        cIpcaFrac += idxRate(inp.corrIdx, m, "corr") * dc[m] / 365;  // só a parte de IPCA (sem spread), fração
       }
     }
     precJur[m] = jur; accJur += jur;
@@ -402,7 +406,9 @@ function price(inp, snap, ferSet){
   // No sem-deságio (precatório) PRÉ = exatamente o spread; com deságio o PRÉ sobe (ganho da compra barata).
   const recLiq = recebidoBrutoBullet - earnoutPago;
   const Tanos = (serial(bullet) - serial(base)) / 365;            // prazo da operação em anos (início -> pagamento)
-  const ipcaSimples = Tanos > 0 ? cIpcaFrac / Tanos : 0;
+  const fatorAc = inp.temAcordo ? inp.acordoFator : 1;
+  // IPCA da decomposição = correção de IPCA (sobre a causa, via fator de acordo) como retorno sobre o preço
+  const ipcaSimples = (Tanos > 0 && precoPago) ? cIpcaFrac * causa * fatorAc / precoPago / Tanos : 0;
   const retornoSimples = (Tanos > 0 && precoPago) ? (recLiq / precoPago - 1) / Tanos : 0;
   const preSimples = retornoSimples - ipcaSimples;
 
@@ -504,7 +510,7 @@ function readInputs(){
     ? PrecatEngine.buildLevas('avista', di, V, 1)
     : PrecatEngine.buildLevas('parcelado', di, V, Math.max(1, num('nParcelas')));
   return { ehPrecatorio:EHPREC, modo:MODO, temEarnout:TEMEO, temAcordo:TEMAC,
-    face:money('face'), viraMeses:num('viraMeses'), prazoMeses:num('prazo'),
+    face:money('face'), valorCausa:money('valorCausa'), viraMeses:num('viraMeses'), prazoMeses:num('prazo'),
     corrIdx:"IPCA", corrSpread:num('corrSpread')/100,
     corrPreIdx:$('corrPreIdx').value, corrPre:num('corrPre')/100,
     levas, acordoFator:num('acFator')/100, acordoPrazo:num('acPrazo'),
@@ -626,7 +632,7 @@ function goalSeek(){
 // ---- cenário <-> URL ----
 function buildState(){
   return { ehP:EHPREC, eo:TEMEO, ac:TEMAC, modo:MODO,
-    face:$('face').value, vira:num('viraMeses'), prazo:num('prazo'),
+    face:$('face').value, vc:$('valorCausa').value, vira:num('viraMeses'), prazo:num('prazo'),
     cs:num('corrSpread'), cpi:$('corrPreIdx').value, cp:num('corrPre'),
     im:IPCAMODE, iv:num('ipcaVal'), vp:$('valorPagar').value, di:$('dataInicio').value, np:num('nParcelas'), ta:num('tirAlvo'),
     af:num('acFator'), ap:num('acPrazo'), ei:$('eoIdx').value, es:num('eoSpread'),
@@ -634,7 +640,7 @@ function buildState(){
 }
 function applyState(s){ try{
   EHPREC=!!s.ehP; TEMEO=!!s.eo; TEMAC=!!s.ac;
-  $('face').value=s.face; $('viraMeses').value=s.vira; $('prazo').value=s.prazo;
+  $('face').value=s.face; if(s.vc)$('valorCausa').value=s.vc; $('viraMeses').value=s.vira; $('prazo').value=s.prazo;
   $('corrSpread').value=s.cs; if(s.cpi)$('corrPreIdx').value=s.cpi; $('corrPre').value=s.cp;
   $('ipcaVal').value=s.iv; $('valorPagar').value=s.vp||s.preco||'0,00'; if(s.di)$('dataInicio').value=s.di; if(s.np)$('nParcelas').value=s.np; $('tirAlvo').value=s.ta;
   $('acFator').value=s.af; $('acPrazo').value=s.ap; $('eoIdx').value=s.ei; $('eoSpread').value=s.es;
