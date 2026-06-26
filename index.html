@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Simulador · Precatório — Chess Capital</title>
+<title>Simulador · Legal Claim — Chess Capital</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400&family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -78,9 +78,15 @@
   .subhdr{font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold);font-weight:600;margin:12px 0 2px;padding-top:9px;border-top:1px dotted var(--rule);}
   .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:12px;padding:8px 16px;border-radius:4px;opacity:0;transition:.2s;pointer-events:none;font-family:'Inter';z-index:9;}
   .toast.show{opacity:1;}
+  .doctitle{font-family:'Fraunces',serif;font-size:15px;color:var(--ink);margin-top:5px;display:none;}
+  .docfoot{display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;margin-top:20px;padding-top:16px;border-top:1px solid var(--rule);}
+  .docfoot .field{flex:1 1 200px;}
+  .docfoot input{width:100%;}
+  .docbtns{display:flex;gap:8px;flex:0 0 auto;}
   @media print{ .noprint{display:none!important;} body{background:#fff;} .panel{break-inside:avoid;} .wrap{padding:0;}
     /* garante que os fundos (botão selecionado em dourado etc.) saiam na impressão/PDF */
     *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    .doctitle{font-size:19px;margin:8px 0 6px;}
     .seg{border-color:#000;} .seg button.on{background:var(--gold)!important;color:#fff!important;} }
 </style>
 </head>
@@ -88,9 +94,9 @@
 <div class="wrap">
   <header class="top">
     <div><div class="bn">Chess Capital</div><div class="kicker">Centro Analítico</div>
-      <h1>Simulador · <em>Precatório</em></h1></div>
-    <div class="right"><div id="curvalbl">Curva ETTJ —</div><div>Estimativa indicativa</div>
-      <div class="topbtns noprint"><button class="btn" onclick="copiarLink()">copiar link do cenário</button><button class="btn" onclick="window.print()">imprimir / PDF</button></div></div>
+      <h1>Simulador · <em>Legal Claim</em></h1>
+      <div id="docTitle" class="doctitle"></div></div>
+    <div class="right"><div id="curvalbl">Curva ETTJ —</div><div>Estimativa indicativa</div></div>
   </header>
 
   <div class="grid">
@@ -187,6 +193,12 @@
       </div>
     </div>
   </div>
+
+  <section class="docfoot noprint">
+    <div class="field"><label>Nome do crédito (DIU)<span class="help" title="Nome que identifica o crédito/legal claim. Vira o título no PDF impresso.">i</span></label><span><input type="text" id="docNome" oninput="updateDocTitle()" placeholder="ex.: Crédito de Fulano de Tal"></span></div>
+    <div class="field"><label>Data do cálculo<span class="help" title="Data em que o cálculo foi feito. Compõe o título no PDF impresso.">i</span></label><span><input type="date" id="docData" oninput="updateDocTitle()"></span></div>
+    <div class="docbtns"><button class="btn" onclick="copiarLink()">copiar link do cenário</button><button class="btn" onclick="window.print()">imprimir / PDF</button></div>
+  </section>
 
   <footer>
     Estimativa indicativa, gerada a partir de premissas e da curva ETTJ embutida; <b>não constitui oferta, cotação firme nem recomendação de investimento</b>.
@@ -640,6 +652,7 @@ function buildState(){
     face:$('face').value, vc:$('valorCausa').value, vira:num('viraMeses'), prazo:num('prazo'),
     cs:num('corrSpread'), cpi:$('corrPreIdx').value, cp:num('corrPre'),
     im:IPCAMODE, iv:num('ipcaVal'), vp:$('valorPagar').value, di:$('dataInicio').value, np:num('nParcelas'), ta:num('tirAlvo'),
+    dn:$('docNome').value, dd:$('docData').value,
     af:num('acFator'), ap:num('acPrazo'), ei:$('eoIdx').value, es:num('eoSpread'),
     jan:JAN_DEF };
 }
@@ -651,9 +664,19 @@ function applyState(s){ try{
   $('acFator').value=s.af; $('acPrazo').value=s.ap; $('eoIdx').value=s.ei; $('eoSpread').value=s.es;
   if(Array.isArray(s.jan)) JAN_DEF.splice(0,JAN_DEF.length,...s.jan);
   MODO=s.modo||'avista'; IPCAMODE=s.im||'curva';
+  if(s.dn!=null)$('docNome').value=s.dn; if(s.dd)$('docData').value=s.dd;
 }catch(e){} }
 function encodeState(){ return btoa(unescape(encodeURIComponent(JSON.stringify(buildState())))); }
 function decodeState(c){ return JSON.parse(decodeURIComponent(escape(atob(c)))); }
+// título do documento (nome do crédito · data) — vira o título do PDF impresso
+function updateDocTitle(){
+  const nome=($('docNome').value||'').trim();
+  const d=$('docData').value;
+  const dataFmt = d ? d.split('-').reverse().join('/') : '';
+  const t=[nome, dataFmt].filter(Boolean).join(' · ');
+  const el=$('docTitle'); el.textContent=t; el.style.display=t?'block':'none';
+  document.title = t ? ('Legal Claim · '+t) : 'Simulador · Legal Claim — Chess Capital';
+}
 function copiarLink(){
   const url=location.origin+location.pathname+'?c='+encodeState();
   (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject())
@@ -673,6 +696,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   $('ipcaCurva').classList.toggle('on',IPCAMODE==='curva'); $('ipcaMan').classList.toggle('on',IPCAMODE==='manual');
   $('ipcaVal').disabled=(IPCAMODE==='curva');
   if(!$('dataInicio').value) $('dataInicio').value=SNAP.data_base;   // default = data-base da ETTJ
+  if(!$('docData').value){ const t=new Date(); $('docData').value=t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0'); }
+  updateDocTitle();
   renderJanelas(); sync();
 });
 </script>
