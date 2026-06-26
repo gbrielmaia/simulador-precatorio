@@ -19,6 +19,10 @@
   .kicker{font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:var(--gold);font-weight:600;}
   h1{font-family:'Fraunces',serif;font-weight:300;font-size:38px;letter-spacing:-.02em;margin:5px 0 0;line-height:1;}
   .top .right{text-align:right;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-mute);font-weight:600;line-height:1.9;}
+  .top .logo{font-family:'Fraunces',Georgia,serif;font-size:27px;line-height:1;white-space:nowrap;letter-spacing:.01em;}
+  .top .logo .lg-g{color:#A8803A;font-weight:700;}
+  .top .logo .lg-n{color:#10243F;font-weight:400;}
+  .footmeta{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-mute);font-weight:600;margin-bottom:6px;}
   .selftest{margin-top:14px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:7px 12px;display:inline-block;border:1px solid var(--rule-strong);background:var(--card);}
   .selftest.ok{border-color:var(--ok);color:var(--ok);} .selftest.bad{border-color:var(--bad);color:var(--bad);}
   .grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px;align-items:start;}
@@ -96,7 +100,7 @@
     <div><div class="bn">Chess Capital</div><div class="kicker">Centro Analítico</div>
       <h1>Simulador · <em>Legal Claim</em></h1>
       <div id="docTitle" class="doctitle"></div></div>
-    <div class="right"><div id="curvalbl">Curva ETTJ —</div><div>Estimativa indicativa</div></div>
+    <div class="right"><div class="logo" aria-label="Chess Capital"><span class="lg-g">CHESS</span> <span class="lg-n">CAPITAL</span></div></div>
   </header>
 
   <div class="grid">
@@ -201,6 +205,7 @@
   </section>
 
   <footer>
+    <div class="footmeta"><span id="curvalbl">Curva ETTJ —</span> · Estimativa indicativa</div>
     Estimativa indicativa, gerada a partir de premissas e da curva ETTJ embutida; <b>não constitui oferta, cotação firme nem recomendação de investimento</b>.
     Resultados dependem dos dados informados. © Chess Capital · Centro Analítico.
   </footer>
