@@ -40,10 +40,20 @@
   .panel .field > span{white-space:nowrap;flex:0 0 auto;}  /* mantém caixa+sufixo na MESMA linha; o rótulo é que encolhe/quebra */
   .panel .field > span > .suffix:last-child{display:inline-block;width:52px;text-align:left;}
   .panel .field > span > input:last-child{margin-right:56px;}  /* campos sem sufixo (data, nº parcelas) alinham igual */
-  /* celular: empilha o rótulo acima da caixa; a caixa+sufixo vai p/ a 2ª linha à esquerda (folga à direita) */
-  @media(max-width:620px){
-    .panel .field{flex-wrap:wrap;align-items:flex-start;}
-    .panel .field > label{flex:1 1 100%;margin-bottom:6px;}
+  /* celular: mantém o layout do desktop (rótulo ao lado da caixa), só reduz fonte e largura p/ caber */
+  @media(max-width:480px){
+    .wrap{padding:22px 14px 40px;}
+    .panel{padding:14px 13px;}
+    .field{gap:8px;}
+    .field label{font-size:11px;}
+    input,select{font-size:11px;padding:4px 6px;}
+    .suffix{font-size:10px;}
+    input[type=number],input[inputmode=decimal]{width:98px;}
+    input[type=date]{width:106px;}
+    .panel .field > span > .suffix:last-child{width:42px;}
+    .panel .field > span > input:last-child{margin-right:46px;}
+    .seg button{padding:4px 9px;font-size:10px;}
+    h1{font-size:30px;}
   }
   /* switch */
   .sw{position:relative;width:44px;height:22px;display:inline-block;}
