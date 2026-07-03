@@ -789,7 +789,7 @@ function updateDocTitle(){
   document.title = t ? ('Legal Claim · '+t) : 'Calculadora Legal Claim — Chess Capital';
 }
 function copiarLink(){
-  const url=location.origin+location.pathname+'?c='+encodeState();
+  const url=location.origin+location.pathname+'?c='+encodeURIComponent(encodeState());
   (navigator.clipboard?navigator.clipboard.writeText(url):Promise.reject())
     .then(()=>toast('Link do cenário copiado'))
     .catch(()=>{ prompt('Copie o link do cenário:', url); });
