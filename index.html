@@ -221,20 +221,22 @@
         <div class="res"><span class="k">Preço total</span><span class="v" id="rPreco">—</span></div>
         <div class="res"><span class="k">Fator deságio<span class="help" title="Quanto você paga como fração do valor atualizado nominal de hoje (preço ÷ valor atualizado = 1 − deságio).">i</span></span><span class="v" id="rDes">—</span></div>
         <div class="res"><span class="k">MOIC<span class="help" title="Múltiplo sobre o capital: total recebido ÷ preço pago.">i</span></span><span class="v" id="rMoic">—</span></div>
-        <div class="res hide" id="rowHon"><span class="k" id="kHon">Honorário</span><span class="v" id="rHon">—</span></div>
-        <div class="res hide" id="rowDesc"><span class="k">Descontos / contribuições<span class="help" title="Retenções do Ofício Requisitório (prev./IR) deduzidas no pagamento. São proporção fixa do crédito, então CORRIGEM junto com o precatório — os valores mostrados (desconto e líquido) já vêm corrigidos ao pagamento, coerentes com o valor atualizado. Reduzem TIR/MOIC na mesma proporção.">i</span></span><span class="v" id="rDesc">—</span></div>
         <div class="res"><span class="k">Pagamento em</span><span class="v" id="rData">—</span></div>
         <div class="res hide" id="rowEoZera"><span class="k">Earn-out zera em<span class="help" title="Âncora de negociação: data em que o piso do earn-out (preço remarcado a piso-índice + spread, composto) alcança o valor a receber (face corrigido no tempo × fator de acordo). A partir dela o earn-out é zero — independe do prazo e do % das janelas. 'nasce zerado' = o piso já supera o recebido hoje; 'não zera' = o piso cresce devagar demais e não alcança no horizonte.">i</span></span><span class="v" id="rEoZera">—</span></div>
       </div>
       <div class="panel">
-        <h2 class="sec">Composição do recebimento</h2>
-        <div class="res sub"><span class="k">Valor atualizado (nominal hoje)</span><span class="v" id="cFace">—</span></div>
-        <div class="res sub"><span class="k">(+) Correção até o pagamento</span><span class="v" id="cJuros">—</span></div>
-        <div class="res sub"><span class="k">(=) Valor atualizado corrigido no pagamento</span><span class="v" id="cFaceC">—</span></div>
-        <div class="res sub hide" id="cRowAcordo"><span class="k">(×) Fator de acordo</span><span class="v" id="cFator">—</span></div>
-        <div class="res sub hide" id="cRowEo"><span class="k">(−) Earn-out pago</span><span class="v" id="cEo">—</span></div>
-        <div class="res tot"><span class="k">Recebido líquido</span><span class="v" id="cRecLiq">—</span></div>
-        <div class="res sub"><span class="k">Preço pago</span><span class="v" id="cPreco">—</span></div>
+        <h2 class="sec">Resumo da operação</h2>
+        <div class="res sub"><span class="k">Valor atualizado (hoje)</span><span class="v" id="dFace">—</span></div>
+        <div class="res sub"><span class="k">(+) Correção até o pagamento</span><span class="v" id="dCorr">—</span></div>
+        <div class="res tot"><span class="k">(=) Corrigido no pagamento</span><span class="v" id="dFaceC">—</span></div>
+        <div class="res sub hide" id="dRowAcordo"><span class="k">(×) Fator de acordo<span class="help" title="Haircut do acordo direto: você recebe esse % dos fluxos.">i</span></span><span class="v" id="dAcordo">—</span></div>
+        <div class="res sub hide" id="dRowDesc"><span class="k">(−) Descontos / contribuições<span class="help" title="Retenções do Ofício Requisitório (previdenciária/IR), proporção fixa do crédito — corrigidas ao pagamento.">i</span></span><span class="v" id="dDesc">—</span></div>
+        <div class="res sub hide" id="dRowHon"><span class="k" id="dHonK">(−) Honorário embutido</span><span class="v" id="dHon">—</span></div>
+        <div class="res sub hide" id="dRowEo"><span class="k">(−) Earn-out pago</span><span class="v" id="dEo">—</span></div>
+        <div class="res tot"><span class="k">(=) Recebido líquido</span><span class="v" id="dRecLiq">—</span></div>
+        <div class="res sub"><span class="k">(−) Preço pago</span><span class="v" id="dPreco">—</span></div>
+        <div class="res tot"><span class="k">(=) Resultado da operação<span class="help" title="Recebido líquido − preço pago = soma dos fluxos da operação. Reconcilia com o MOIC (= 1 + resultado/preço).">i</span></span><span class="v" id="dResultado">—</span></div>
+        <div class="res sub hide" id="dRowHonInfo"><span class="k" id="dHonInfoK">Honorário por fora</span><span class="v" id="dHonInfo">—</span></div>
       </div>
       <div class="panel">
         <h2 class="sec">Sensibilidade — TIR (prazo × preço)</h2>
@@ -559,7 +561,24 @@ function price(inp, snap, ferSet){
   const faceRealizavel = face * fatorAc * liquidoFator;                // o que de fato se recebe de "face" (pós-acordo, líquido de descontos)
   const preComposto = (Teff > 0 && precoPago > 0) ? Math.pow(faceRealizavel / precoPago, 1 / Teff) - 1 : 0;
 
-  return { tir, preco: precoPago, desagio, moic, prazoMedio,
+  // ---- DRE / quadro-resumo da operacao (SO' exibicao; reconcilia com a TIR/MOIC) ----
+  // cascata multiplicativa na ordem acordo -> descontos -> honorario -> earn-out, cada linha sobre
+  // o subtotal corrente: recebidoLiquido = recebido x honFator x liquidoFator - earn-out;
+  // resultado = recebidoLiquido - preco = Σ fluxos (MOIC = 1 + resultado/preco).
+  const _recebido = recebidoBrutoBullet;                     // faceCorrigido x fatorAcordo
+  const _descDed = _recebido * (1 - liquidoFator);           // descontos corrigidos (sobre o recebido)
+  const _honDed = (honModo === "embutido") ? (_recebido - _descDed) * honPct : 0;
+  const _recLiq = _recebido * honFator * liquidoFator - earnoutPago;
+  const dre = {
+    face: face, correcao: accJur, faceCorrigido: face + accJur,
+    temAcordo: !!inp.temAcordo, acordoFator: fatorAc, recebidoAposAcordo: _recebido,
+    descontos: _descDed,
+    honModo: honModo, honPct: honPct, honorario: _honDed, honorarioInfo: honPct * _recebido,
+    earnout: earnoutPago,
+    recebidoLiquido: _recLiq, preco: precoPago, resultado: _recLiq - precoPago,
+  };
+
+  return { tir, preco: precoPago, desagio, moic, prazoMedio, dre,
            dataPagamento: bullet.toISOString().slice(0, 10),
            jurosPagos: accJur, faceCorrigido: face + accJur,
            earnoutPago, recebidoBrutoBullet, earnoutPctBase,
@@ -843,11 +862,11 @@ function recalc(){
   if($('parcSoma')) $('parcSoma').textContent=fmtBRL(somaLevas);  // soma REAL das parcelas (reflete edições na hora)
   const efPrazo = inp.temAcordo ? inp.acordoPrazo : inp.prazoMeses;
   if(!(inp.face>0) || !(somaLevas>0) || !(efPrazo>0)){
-    ['rTir','rCorr','rPre','rPreco','rDes','rMoic','rData','rEoZera','cFace','cJuros','cFaceC','cFator','cEo','cRecLiq','cPreco'].forEach(id=>$(id).textContent='—');
+    ['rTir','rCorr','rPre','rPreco','rDes','rMoic','rData','rEoZera','dFace','dCorr','dFaceC','dAcordo','dDesc','dHon','dEo','dRecLiq','dPreco','dResultado','dHonInfo'].forEach(id=>$(id).textContent='—');
     if(!EHPREC) $('reqOut').value='—';   // Valor requisitado (auto) só existe no modo DC
     $('rowEoZera').classList.add('hide');
-    $('rowHon').classList.add('hide'); $('rowTirBruta').classList.add('hide'); $('tirHonTag').classList.add('hide');
-    $('rowDesc').classList.add('hide'); $('tirDescTag').classList.add('hide');
+    ['dRowAcordo','dRowDesc','dRowHon','dRowHonInfo','dRowEo','rowTirBruta'].forEach(id=>$(id).classList.add('hide'));
+    $('tirHonTag').classList.add('hide'); $('tirDescTag').classList.add('hide');
     updateIpcaImpl(inp);   // IPCA implícito ainda aparece (depende só da curva+prazo), não força 0
     $('tblSensX').querySelector('thead').innerHTML=''; ['tblSensX','tblSensEo'].forEach(id=>$(id).querySelector('tbody').innerHTML='');
     return;
@@ -869,44 +888,37 @@ function recalc(){
     : (z.estado==='NASCE_ZERADO' ? 'nasce zerado' : 'não zera no horizonte');
   // IPCA implícito da ETTJ: em modo ETTJ, mostra no campo (read-only)
   if(IPCAMODE==='curva') $('ipcaVal').value=(o.ipcaImplicito*100).toFixed(2);
-  // composição do recebimento
-  $('cFace').textContent=fmtBRL(inp.face);
-  // descontos / contribuições: linha no painel Resultado (como o honorário). Mostra o desconto
-  // CORRIGIDO ao pagamento (anda junto com o precatório: proporção fixa do crédito), coerente com o
-  // "Valor atualizado corrigido no pagamento". TIR/MOIC já saem reduzidas pelo mesmo fator.
-  const desc=o.descontos, temDesc=desc.total>0;
-  $('rowDesc').classList.toggle('hide', !temDesc);
+  // ---- DRE / Resumo da operação (cascata; reconcilia com TIR/MOIC) ----
+  const d=o.dre;
+  $('dFace').textContent=fmtBRL(d.face);
+  $('dCorr').textContent='+ '+fmtBRL(d.correcao);
+  $('dFaceC').textContent=fmtBRL(d.faceCorrigido);
+  $('dRowAcordo').classList.toggle('hide', !d.temAcordo);
+  $('dAcordo').textContent='× '+(d.acordoFator*100).toFixed(0)+'%';
+  // descontos (corrigidos ao pagamento) como linha do DRE
+  const temDesc=d.descontos>0;
+  $('dRowDesc').classList.toggle('hide', !temDesc);
   $('tirDescTag').classList.toggle('hide', !temDesc);
-  if(temDesc) $('rDesc').textContent='− '+fmtBRL(desc.totalCorrigido)+' · líquido '+fmtBRL(desc.valorLiquidoCorrigido);
-  $('cJuros').textContent=fmtBRL(o.jurosPagos);
-  $('cFaceC').textContent=fmtBRL(o.faceCorrigido);
-  $('cRowAcordo').classList.toggle('hide', !inp.temAcordo);
-  $('cFator').textContent=(inp.acordoFator*100).toFixed(0)+'%';
-  $('cRowEo').classList.toggle('hide', !(inp.temEarnout && o.earnoutPago>0));
-  $('cEo').textContent=fmtBRL(o.earnoutPago);
-  $('cRecLiq').textContent=fmtBRL(o.recebidoLiquidoBullet);
-  $('cPreco').textContent=fmtBRL(o.preco);
-  // ---- honorário ----
-  const hon=o.honorario, temHon=hon.pct>0;
-  $('rowHon').classList.toggle('hide', !temHon);
-  if(temHon){
-    const pctTxt=(hon.pct*100).toFixed(2).replace('.',',')+'%';
-    if(hon.modo==='embutido'){
-      // as TIR/MOIC de `o` já saem líquidas; a bruta vem de um 2º cálculo com honorarioPct:0
-      const oBr=PrecatEngine.price(Object.assign({},inp,{honorarioPct:0}),SNAP,FER);
-      $('kHon').textContent='Honorário embutido ('+pctTxt+')';
-      $('rHon').textContent='− '+fmtBRL(hon.valor);
-      $('tirHonTag').classList.remove('hide');
-      $('rowTirBruta').classList.remove('hide');
-      $('rTirBruta').textContent=(oBr.tir*100).toFixed(2)+'% · '+oBr.moic.toFixed(2)+'x';
-    } else {
-      $('kHon').textContent='Honorário por fora ('+pctTxt+') — não afeta o retorno';
-      $('rHon').textContent='+ '+fmtBRL(hon.valor);
-      $('tirHonTag').classList.add('hide');
-      $('rowTirBruta').classList.add('hide');
-    }
+  if(temDesc) $('dDesc').textContent='− '+fmtBRL(d.descontos);
+  // honorário: embutido = dedução na cascata; adicionado (por fora) = linha informativa (não reduz)
+  const temHon=d.honPct>0, embut=(d.honModo==='embutido');
+  const pctTxt=(d.honPct*100).toFixed(2).replace('.',',')+'%';
+  $('dRowHon').classList.toggle('hide', !(temHon && embut));
+  $('dRowHonInfo').classList.toggle('hide', !(temHon && !embut));
+  if(temHon && embut){ $('dHonK').textContent='(−) Honorário embutido ('+pctTxt+')'; $('dHon').textContent='− '+fmtBRL(d.honorario); }
+  if(temHon && !embut){ $('dHonInfoK').textContent='Honorário por fora ('+pctTxt+') — não reduz o retorno'; $('dHonInfo').textContent='+ '+fmtBRL(d.honorarioInfo); }
+  $('dRowEo').classList.toggle('hide', !(d.earnout>0));
+  $('dEo').textContent='− '+fmtBRL(d.earnout);
+  $('dRecLiq').textContent=fmtBRL(d.recebidoLiquido);
+  $('dPreco').textContent='− '+fmtBRL(d.preco);
+  $('dResultado').textContent=fmtBRL(d.resultado);
+  // TIR: tag "líq. honorário" + comparação bruta (só quando honorário embutido reduz o retorno)
+  $('tirHonTag').classList.toggle('hide', !(temHon && embut));
+  if(temHon && embut){
+    const oBr=PrecatEngine.price(Object.assign({},inp,{honorarioPct:0}),SNAP,FER);
+    $('rowTirBruta').classList.remove('hide');
+    $('rTirBruta').textContent=(oBr.tir*100).toFixed(2)+'% · '+oBr.moic.toFixed(2)+'x';
   } else {
-    $('tirHonTag').classList.add('hide');
     $('rowTirBruta').classList.add('hide');
   }
   // ---- sensibilidades ----
