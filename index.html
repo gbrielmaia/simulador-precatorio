@@ -197,6 +197,7 @@
           <label>Descontos / Contribuições <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-mute)">(Ofício Requisitório)</span><span class="help" title="Retenções do Ofício Requisitório (previdenciária SPPREV/INSS, IR/RRA) deduzidas NO PAGAMENTO — o comprador realiza o líquido = face − descontos. Como fração fixa do precatório, andam junto com a correção e reduzem TIR/MOIC na proporção líquido/face. IR só se houver valor (RRA nunca é estimado aqui).">i</span></label>
           <table class="parc" id="tblDesc"><tbody></tbody></table>
           <button class="btn noprint" onclick="addDesconto()" style="margin-top:6px">+ desconto</button>
+          <button class="btn noprint" onclick="addDesconto('IR fonte — retenção art. 27 Lei 10.833/03 [a validar]', 3, 'pct')" style="margin-top:6px">+ IR fonte 3%</button>
           <div style="font-size:10px;color:var(--ink-soft);margin-top:5px;">Crédito remuneratório pode ter contribuição previdenciária / IR — registre os valores do Ofício Requisitório.</div>
         </div>
       </div>
@@ -405,7 +406,15 @@ function price(inp, snap, ferSet){
   // (a retenção incide sobre o valor pago) e compõe limpo com correção/acordo/honorário. Default
   // (sem descontos) => liquidoFator=1 => cálculo idêntico (paridade dos golden preservada).
   const descontos = Array.isArray(inp.descontos) ? inp.descontos : [];
-  const totalDescontos = descontos.reduce((s, d) => s + (d && d.valor > 0 ? d.valor : 0), 0);
+  let somaBrl = 0, somaPct = 0;
+  for (const d of descontos) {
+    if (!d || !(d.valor > 0)) continue;
+    if ((d.tipo || "brl") === "pct") somaPct += d.valor; else somaBrl += d.valor;
+  }
+  // total em R$ na face: brl direto + pct resolvido (valor/100 * face). Mantem a variavel
+  // `totalDescontos` consumida no retorno (descontos.total/valorLiquido/totalCorrigido, l.318-319)
+  // e no DRE via (1 - liquidoFator). Sem descontos => totalDescontos=0 => fator 1 (goldens intactos).
+  const totalDescontos = somaBrl + somaPct / 100 * face;
   const liquidoFator = (face > 0) ? Math.max(0, (face - totalDescontos) / face) : 1;
 
   // timeline meses 1..NMONTHS
@@ -784,12 +793,13 @@ function renderDescontos(){
   const tb=$('tblDesc').querySelector('tbody'); if(!tb) return; tb.innerHTML='';
   DESCONTOS.forEach((d,i)=>{ const tr=document.createElement('tr');
     tr.innerHTML=`<td><input type="text" placeholder="INST.PREV. - SPPREV" value="${(d.rotulo||'').replace(/"/g,'&quot;')}" oninput="DESCONTOS[${i}].rotulo=this.value;recalc()"></td>
-      <td><input type="text" inputmode="decimal" value="${fmtBRL(d.valor||0)}" oninput="DESCONTOS[${i}].valor=parseMoney(this.value);recalc()" onblur="maskMoney(this)"><span class=suffix>R$</span></td>
+      <td><input type="text" inputmode="decimal" value="${(d.tipo==='pct')?(d.valor||0):fmtBRL(d.valor||0)}" oninput="DESCONTOS[${i}].valor=(DESCONTOS[${i}].tipo==='pct')?parseFloat(this.value)||0:parseMoney(this.value);recalc()"></td>
+      <td><select onchange="DESCONTOS[${i}].tipo=this.value;renderDescontos();recalc()"><option value="brl" ${d.tipo!=='pct'?'selected':''}>R$</option><option value="pct" ${d.tipo==='pct'?'selected':''}>%</option></select></td>
       <td><button type="button" class="btn" onclick="DESCONTOS.splice(${i},1);renderDescontos();recalc()">×</button></td>`;
     tb.appendChild(tr); });
 }
-function addDesconto(){ DESCONTOS.push({rotulo:'', valor:0}); renderDescontos(); recalc(); }
-function lerDescontos(){ return DESCONTOS.filter(d=>d.valor>0).map(d=>({rotulo:(d.rotulo||'').trim()||'Desconto', valor:d.valor})); }
+function addDesconto(rotulo, valor, tipo){ DESCONTOS.push({rotulo:rotulo||'', valor:valor||0, tipo:tipo||'brl'}); renderDescontos(); recalc(); }
+function lerDescontos(){ return DESCONTOS.filter(d=>d.valor>0).map(d=>({rotulo:(d.rotulo||'').trim()||'Desconto', valor:d.valor, tipo:d.tipo||'brl'})); }
 const JAN_DEF = [[0,12,0],[13,24,0],[25,31,0],[32,10000,0]];
 function renderJanelas(){
   const tb=$('tblJan').querySelector('tbody'); tb.innerHTML='';
@@ -1068,7 +1078,7 @@ function buildState(){
     dn:$('docNome').value, dd:$('docData').value, parc:PARCELAS,
     af:num('acFator'), ap:num('acPrazo'), ei:$('eoIdx').value, es:num('eoSpread'),
     hon:$('inHonorarioPct').value, hm:$('inHonorarioModo').value,
-    desc:DESCONTOS.map(d=>({rotulo:d.rotulo, valor:d.valor})),
+    desc:DESCONTOS.map(d=>({rotulo:d.rotulo, valor:d.valor, tipo:d.tipo||'brl'})),
     jan:JAN_DEF };
 }
 function applyState(s){ try{
@@ -1078,7 +1088,7 @@ function applyState(s){ try{
   $('ipcaVal').value=s.iv; $('valorPagar').value=s.vp||s.preco||'0,00'; if(s.di)$('dataInicio').value=s.di; if(s.np)$('nParcelas').value=s.np; $('tirAlvo').value=s.ta;
   $('acFator').value=s.af; $('acPrazo').value=s.ap; $('eoIdx').value=s.ei; $('eoSpread').value=s.es;
   if(s.hon!=null)$('inHonorarioPct').value=s.hon; if(s.hm)$('inHonorarioModo').value=s.hm;  // ausente => default (vazio/adicionado)
-  if(Array.isArray(s.desc)) DESCONTOS=s.desc.map(d=>({rotulo:d.rotulo, valor:d.valor}));   // renderizado no boot
+  if(Array.isArray(s.desc)) DESCONTOS=s.desc.map(d=>({rotulo:d.rotulo, valor:d.valor, tipo:d.tipo||'brl'}));   // renderizado no boot
   if(Array.isArray(s.jan)) JAN_DEF.splice(0,JAN_DEF.length,...s.jan);
   MODO=s.modo||'avista'; IPCAMODE=s.im||'curva';
   if(Array.isArray(s.parc)) PARCELAS=s.parc.map(p=>({date:p.date, valor:p.valor}));
@@ -1166,7 +1176,7 @@ function exportarXlsx(){
     eoIdx:inp.eoIdx, eoSpread:inp.eoSpread, eo2Valor:0, eo2Mes:18,
     acFator:inp.acordoFator, acPrazo:inp.acordoPrazo,
     honorarioPct:inp.honorarioPct||0, honorarioModo:inp.honorarioModo||'adicionado',
-    descTotal:(inp.descontos||[]).reduce((s,d)=>s+(d.valor||0),0),
+    descTotal:(inp.descontos||[]).reduce((s,d)=>s+((d&&d.tipo==='pct')?((d.valor||0)/100*(inp.face||0)):(d.valor||0)),0),
     ipcaModo:(inp.ipcaOverride!=null)?'Manual':'ETTJ', ipcaManual:inp.ipcaOverride||0, tirAlvo:num('tirAlvo')/100,
     janelas:(inp.eoJanelas||[]).map(w=>[w.de,w.ate,w.pct]),
     parcelas:(MODO==='parcelado')?inp.levas.map(l=>({date:l.date,valor:l.valor})):null,
@@ -1209,7 +1219,7 @@ function aplicaValorDaCalculadora(){
   if (hp){ $('inHonorarioPct').value = hp; const hm = params.get('hm'); if (hm) $('inHonorarioModo').value = hm; }
   // descontos / contribuicoes
   const desc = params.get('desc');
-  if (desc){ try { const arr = JSON.parse(decodeURIComponent(escape(atob(desc)))); if (Array.isArray(arr) && arr.length){ DESCONTOS = arr.map(function(d){ return {rotulo: d.rotulo || '', valor: +d.valor || 0}; }); renderDescontos(); } } catch(e){} }
+  if (desc){ try { const arr = JSON.parse(decodeURIComponent(escape(atob(desc)))); if (Array.isArray(arr) && arr.length){ DESCONTOS = arr.map(function(d){ return {rotulo: d.rotulo || '', valor: +d.valor || 0, tipo: d.tipo || 'brl'}; }); renderDescontos(); } } catch(e){} }
   // nome do caso -> Nome do credito (DIU)
   const nome = params.get('nome');
   if (nome){ $('docNome').value = nome; }
