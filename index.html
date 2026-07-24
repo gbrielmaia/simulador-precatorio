@@ -517,14 +517,16 @@ function price(inp, snap, ferSet){
       ? (idxRate(inp.corrPreIdx || "Pré", m, "corr") + inp.corrPre)
       : (idxRate(inp.corrIdx, m, "corr") + inp.corrSpread);
     faceCorrFull += rateCF * dc[m] / 365 * (naPre ? causa : reqBase + preAcum);  // pré sobre a causa; pós sobre o requisitado (espelha o sub-ledger)
-    if (eoZera.estado === "NAO_ZERA" && faceCorrFull * fatorCross <= hurEoP[m])  // 1º mês recebido ≤ piso
+    if (eoZera.estado === "NAO_ZERA" && faceCorrFull * fatorCross * honFator * liquidoFator <= hurEoP[m])  // 1º mês LÍQUIDO ≤ piso
       eoZera = (m === 1) ? { estado: "NASCE_ZERADO", data: null, valor: null }
                          : { estado: "ZERA", data: isoDate(date[m]), valor: hurEoP[m] };
 
     // earn-out pagamentos
     const pmtAdj = inp.temAcordo ? precPMT[m] * inp.acordoFator : precPMT[m];
     let r63 = 0;
-    if (inp.temEarnout && isBullet) r63 = Math.max(pctJanela(m) * (pmtAdj - hurEoP[m]), 0);
+    // base do earn-out = recebido LÍQUIDO (após honorário embutido + descontos/IR) menos o piso
+    // (decisão Gabriel 2026-07-24: earn-out incide sobre o que o comprador embolsa, não sobre o bruto).
+    if (inp.temEarnout && isBullet) r63 = Math.max(pctJanela(m) * (pmtAdj * honFator * liquidoFator - hurEoP[m]), 0);
     let r64 = 0;
     if (inp.temEarnout && m === inp.eo2Mes) r64 = inp.eo2Valor || 0;
 
